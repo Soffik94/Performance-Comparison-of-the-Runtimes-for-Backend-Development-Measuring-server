@@ -80,6 +80,17 @@ Prometheus runs on `10.0.0.3:9090`. Grafana runs on `10.0.0.3:3000`.
 Detailed Grafana setup instructions and thesis-oriented PromQL queries are in
 `GRAFANA_PROMETHEUS_QUERIES.md`.
 
+Dashboard JSON files are stored in `dashboard/`:
+
+| File | Purpose |
+| --- | --- |
+| `dashboard/runtimeBenchmarkDashboard.json` | original dashboard snapshot |
+| `dashboard/runtimeBenchmarkDashboard_v2_measurement.json` | recommended dashboard for current benchmark evaluation |
+
+Use `runtimeBenchmarkDashboard_v2_measurement.json` for final results. It has a
+`testid` variable, filters k6 panels with `phase="measurement"`, and includes a
+dropped-iterations panel for checking whether k6 kept up with `TARGET_RPS`.
+
 k6 sends metrics to Prometheus by remote write:
 
 ```bash

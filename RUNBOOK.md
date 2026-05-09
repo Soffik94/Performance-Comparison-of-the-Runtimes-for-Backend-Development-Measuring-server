@@ -126,6 +126,15 @@ Open Grafana:
 http://178.105.65.16:3000
 ```
 
+Import or use the current measurement dashboard:
+
+```text
+dashboard/runtimeBenchmarkDashboard_v2_measurement.json
+```
+
+It should show variables `runtime`, `benchmark`, `testid`, `server_job`, and
+`db`. Final k6 panels must use `phase="measurement"` so warmup data is excluded.
+
 Use Prometheus as the data source:
 
 ```text
@@ -147,3 +156,4 @@ http://10.0.0.3:9090
 | read/write test returns `500` | application cannot connect to PostgreSQL or schema is missing | check `.env`, `DB_HOST`, `DB_SCHEMA`, and `runtime-schemas.sql` |
 | read test returns empty array | table has no seeded rows | seed the runtime schema before read benchmark |
 | Grafana cannot distinguish runtimes | k6 tags missing | use the provided `start*.sh` scripts |
+| Dropped iterations are non-zero | k6 load generator could not keep target arrival rate | increase `PRE_ALLOCATED_VUS`/`MAX_VUS` or lower `TARGET_RPS` |
