@@ -41,7 +41,16 @@ Each runtime has a matching shell wrapper:
 | Deno | `./startPingDeno.sh` | `./startComputeDeno.sh` | `./startReadDeno.sh` | `./startWriteDeno.sh` |
 | Bun | `./startPingBun.sh` | `./startComputeBun.sh` | `./startReadBun.sh` | `./startWriteBun.sh` |
 
-## Runtime Labels
+## Load Model And Labels
+
+The k6 scripts use an open workload model with two `constant-arrival-rate`
+scenarios:
+
+- `warmup`, controlled by `WARMUP_DURATION`
+- `measurement`, controlled by `MEASURE_DURATION`
+
+The target load is `TARGET_RPS`. `PRE_ALLOCATED_VUS` and `MAX_VUS` are only the
+load-generator capacity reserve.
 
 The start scripts add k6 tags so Grafana and Prometheus can distinguish results:
 
@@ -49,16 +58,20 @@ The start scripts add k6 tags so Grafana and Prometheus can distinguish results:
 | --- | --- |
 | `runtime` | `node`, `deno`, `bun` |
 | `benchmark` | `ping`, `compute`, `read`, `write` |
+| `testid` | explicit `TEST_ID` or generated value |
+| `phase` | `warmup`, `measurement` |
 
 Example PromQL filter:
 
 ```promql
-{__name__=~"k6_http_req_duration.*", runtime="deno", benchmark="write"}
+{__name__=~"k6_http_req_duration.*", runtime="deno", benchmark="write", phase="measurement"}
 ```
 
-Write tests include `RUNTIME` and `RUN_ID` in generated `name` and `email`
-values. If `RUN_ID` is not set explicitly, k6 uses the current timestamp, so
-repeated write tests do not reuse the same e-mail addresses.
+Filter final thesis results by `phase="measurement"` so warmup samples are not
+mixed into the evaluated data.
+
+Write tests include `RUNTIME` and the run identifier in generated `name` and
+`email` values. If `RUN_ID` is not set explicitly, the scripts use `TEST_ID`.
 
 ## Prometheus And Grafana
 
@@ -98,9 +111,9 @@ On the measurement server:
 cd ~/Merici
 chmod +x start*.sh
 
-./startPingNode.sh
-./startPingDeno.sh
-./startPingBun.sh
+TARGET_RPS=2000 TEST_ID=ping-node-rps2000-run1 ./startPingNode.sh
+TARGET_RPS=2000 TEST_ID=ping-deno-rps2000-run1 ./startPingDeno.sh
+TARGET_RPS=2000 TEST_ID=ping-bun-rps2000-run1 ./startPingBun.sh
 
 ./startComputeNode.sh
 ./startComputeDeno.sh
@@ -117,6 +130,21 @@ chmod +x start*.sh
 
 Run tests one at a time for cleaner comparison unless the methodology explicitly
 requires concurrent runtime tests.
+
+Common environment variables:
+
+| Variable | Default |
+| --- | --- |
+| `BASE_URL` | runtime-specific app URL |
+| `RUNTIME` | wrapper-specific runtime |
+| `BENCHMARK` | wrapper-specific benchmark |
+| `TEST_ID` | generated from benchmark, runtime, RPS, timestamp |
+| `TARGET_RPS` | `1000` |
+| `WARMUP_DURATION` | `1m` |
+| `MEASURE_DURATION` | `3m` |
+| `PRE_ALLOCATED_VUS` | `100` |
+| `MAX_VUS` | `1000` |
+| `COOLDOWN_DURATION` | `60` |
 
 ## Preflight Checks
 

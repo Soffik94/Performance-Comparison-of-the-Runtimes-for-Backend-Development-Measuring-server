@@ -1,19 +1,17 @@
 import http from 'k6/http';
-import { sleep } from 'k6';
+import { createBenchmarkConfig } from './k6Config.js';
 
-const BASE_URL = __ENV.BASE_URL || 'http://10.0.0.4:3000';
-const RUNTIME = __ENV.RUNTIME || 'runtime';
-const RUN_ID = __ENV.RUN_ID || `${Date.now()}`;
+const config = createBenchmarkConfig('write');
+const BASE_URL = config.BASE_URL;
+const RUNTIME = config.RUNTIME;
+const DATA_RUN_ID = __ENV.RUN_ID || config.TEST_ID;
 
-export const options = {
-  vus: 5,
-  duration: '30s',
-};
+export const options = config.options;
 
 export default function () {
   const payload = JSON.stringify({
-    name: `${RUNTIME}_${RUN_ID}_${__VU}_${__ITER}`,
-    email: `${RUNTIME}_${RUN_ID}_${__VU}_${__ITER}@test.com`
+    name: `${RUNTIME}_${DATA_RUN_ID}_${__VU}_${__ITER}`,
+    email: `${RUNTIME}_${DATA_RUN_ID}_${__VU}_${__ITER}@test.com`
   });
 
   const params = {
@@ -27,6 +25,4 @@ export default function () {
   if (res.status !== 201 && res.status !== 200) {
     console.error(`ERROR: status ${res.status}, body ${res.body}`);
   }
-
-  sleep(1);
 }

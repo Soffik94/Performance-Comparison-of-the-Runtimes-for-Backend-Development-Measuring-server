@@ -1,16 +1,12 @@
 #!/bin/bash
+set -uo pipefail
 
-echo "Testing COMPUTE DENO (port 3001)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-docker run --rm -i \
---user 0 \
--e K6_PROMETHEUS_RW_SERVER_URL=http://10.0.0.3:9090/api/v1/write \
--v $(pwd):/scripts \
-grafana/k6 run \
--e BASE_URL=http://10.0.0.4:3001 \
--e RUNTIME=deno \
--e ITERATIONS=10000 \
--o experimental-prometheus-rw \
---tag runtime=deno \
---tag benchmark=compute \
-/scripts/compute.js
+export BASE_URL="${BASE_URL:-http://10.0.0.4:3001}"
+export RUNTIME="${RUNTIME:-deno}"
+export BENCHMARK="${BENCHMARK:-compute}"
+export K6_SCRIPT="${K6_SCRIPT:-compute.js}"
+export ITERATIONS="${ITERATIONS:-${N:-10000}}"
+
+bash "${SCRIPT_DIR}/runK6Benchmark.sh"

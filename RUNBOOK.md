@@ -71,9 +71,9 @@ For read tests, seed all three schemas with the same amount of data.
 Use one runtime and one benchmark type per measured run:
 
 ```bash
-./startPingNode.sh
-./startPingDeno.sh
-./startPingBun.sh
+TARGET_RPS=2000 TEST_ID=ping-node-rps2000-run1 ./startPingNode.sh
+TARGET_RPS=2000 TEST_ID=ping-deno-rps2000-run1 ./startPingDeno.sh
+TARGET_RPS=2000 TEST_ID=ping-bun-rps2000-run1 ./startPingBun.sh
 
 ./startComputeNode.sh
 ./startComputeDeno.sh
@@ -88,10 +88,14 @@ Use one runtime and one benchmark type per measured run:
 ./startWriteBun.sh
 ```
 
-k6 metrics are tagged with `runtime` and `benchmark`.
+k6 metrics are tagged with `runtime`, `benchmark`, `testid`, and `phase`.
+Use `phase="measurement"` for final evaluation so warmup data is excluded.
+
+Load is controlled by `TARGET_RPS`; VUs are configured only as generator
+capacity via `PRE_ALLOCATED_VUS` and `MAX_VUS`.
 
 For write tests, the generated rows include a run identifier in `name` and
-`email`. To set it manually:
+`email`. By default this is `TEST_ID`; to set a separate value manually:
 
 ```bash
 RUN_ID=node-write-001 ./startWriteNode.sh
@@ -110,8 +114,8 @@ Useful checks:
 ```promql
 up
 k6_http_reqs_total
-{__name__=~"k6_http_req_duration.*", runtime="node"}
-{__name__=~"k6_http_req_duration.*", benchmark="write"}
+{__name__=~"k6_http_req_duration.*", runtime="node", phase="measurement"}
+{__name__=~"k6_http_req_duration.*", benchmark="write", phase="measurement"}
 ```
 
 ## 6. Check Grafana

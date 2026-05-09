@@ -9,6 +9,8 @@ merici repozitar `Merici`, kde k6 posila metriky do Promethea pres
 | --- | --- | --- |
 | `runtime` | `node`, `deno`, `bun` | testovane behove prostredi |
 | `benchmark` | `ping`, `compute`, `read`, `write` | testovany scenar |
+| `testid` | napr. `ping-node-rps2000-run1` | jednoznacny identifikator behu |
+| `phase` | `warmup`, `measurement` | faze mereni |
 
 Aktualni setup meri aplikace z klientské strany pomoci k6 a infrastrukturu pres
 node-exporter a postgres-exporter. Aplikace samotne nevystavuji `/metrics`.
@@ -22,8 +24,8 @@ node-exporter a postgres-exporter. Aplikace samotne nevystavuji `/metrics`.
 | H3: Node.js + Express bude mit vyssi rezii a latenci | P99/avg latence napric scenari, CPU a RAM app serveru |
 
 Pro statisticke vyhodnoceni pouzivej stejne casove okno pro vsechny dotazy
-v ramci jednoho behu. Pokud nemas tag `testid`, oddeluj jednotlive behy pres
-presne casove rozsahy v Grafane.
+v ramci jednoho behu a filtruj k6 metriky pres `phase="measurement"`. Warmup
+data se nesmi michat do finalniho vyhodnoceni.
 
 ## Prometheus setup
 
@@ -89,7 +91,7 @@ Pro P99 staci aktualni konfigurace. k6 remote write ma ve vychozim nastaveni
 pro trend metriky pouze `p(99)`, tedy napriklad `k6_http_req_duration_p99`.
 
 Pokud chces v Grafane zobrazovat i `avg`, `min`, `max`, `p90` nebo `p95`,
-dopln do kazdeho `docker run` ve start skriptech tento radek:
+dopln do `docker run` v `runK6Benchmark.sh` tento radek:
 
 ```bash
 -e K6_PROMETHEUS_RW_TREND_STATS=p(90),p(95),p(99),avg,min,max \
@@ -106,11 +108,11 @@ k6_http_req_duration_min
 k6_http_req_duration_max
 ```
 
-Pro opakovane behy a ANOVA/boxploty je velmi uzitecne pridat do kazdeho start
-skriptu jeste tag `testid`:
+Start skripty predavaji `testid` automaticky. Pokud `TEST_ID` nezadas rucne,
+vygeneruje se z benchmarku, runtime, ciloveho RPS a timestampu:
 
 ```bash
---tag testid=${TEST_ID:-manual} \
+TEST_ID="${BENCHMARK}-${RUNTIME}-rps${TARGET_RPS}-$(date -u +%Y%m%dT%H%M%SZ)"
 ```
 
 Beh potom spustis napriklad:
@@ -120,9 +122,6 @@ TEST_ID=read-node-01 ./startReadNode.sh
 TEST_ID=read-deno-01 ./startReadDeno.sh
 TEST_ID=read-bun-01 ./startReadBun.sh
 ```
-
-Bez `testid` je stale mozne data vyhodnotit, ale musis v Grafane vybrat casove
-okno konkretniho behu.
 
 ## Grafana setup
 
@@ -187,12 +186,19 @@ label_values(pg_stat_database_numbackends, datname)
 
 Pro tento benchmark typicky `mydb`.
 
-#### `$testid` volitelne
-
-Pouzij jen po pridani `--tag testid=...` do start skriptu.
+#### `$testid`
 
 ```promql
 label_values(k6_http_reqs_total, testid)
+```
+
+#### `$phase`
+
+Pro finalni panely nastav obvykle konstantu `measurement`. Promennou pouzij jen
+pokud chces ladit warmup:
+
+```promql
+label_values(k6_http_reqs_total, phase)
 ```
 
 ## Kontrolni PromQL dotazy
@@ -211,23 +217,24 @@ up{job=~"app-server-node-exporter|measurement-server-node-exporter|db-server-nod
 count by (__name__) ({__name__=~"k6_.*"})
 ```
 
-### Existuji runtime a benchmark labely?
+### Existuji runtime, benchmark, testid a phase labely?
 
 ```promql
-count by (runtime, benchmark) (k6_http_reqs_total)
+count by (runtime, benchmark, testid, phase) (k6_http_reqs_total)
 ```
 
 ### P99 metriky z k6
 
 ```promql
-{__name__=~"k6_http_req_duration_.*", runtime=~"node|deno|bun"}
+{__name__=~"k6_http_req_duration_.*", runtime=~"node|deno|bun", phase="measurement"}
 ```
 
 ## Hlavni benchmark dotazy
 
 Dotazy nize jsou pripravene pro Grafana promenne `$runtime` a `$benchmark`.
-Kdyz dotaz zkousis primo v Prometheus UI, nahrad je napriklad za
-`node|deno|bun` a `ping|compute|read|write`.
+Pokud chces vybrat konkretni beh, pridej do selectoru jeste
+`testid=~"$testid"`. K6 metriky ve finalnich panelech filtruji
+`phase="measurement"`.
 
 ### 1. Propustnost, RPS
 
@@ -235,7 +242,7 @@ Aktualni RPS podle runtime a benchmarku:
 
 ```promql
 sum by (runtime, benchmark) (
-  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[$__rate_interval])
+  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__rate_interval])
 )
 ```
 
@@ -244,7 +251,7 @@ Prumerne RPS za vybrane casove okno:
 ```promql
 avg_over_time((
   sum by (runtime, benchmark) (
-    rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[30s])
+    rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[30s])
   )
 )[$__range:$__interval])
 ```
@@ -254,7 +261,7 @@ Peak RPS za vybrane casove okno:
 ```promql
 max_over_time((
   sum by (runtime, benchmark) (
-    rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[30s])
+    rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[30s])
   )
 )[$__range:$__interval])
 ```
@@ -263,7 +270,7 @@ RPS pouze pro I/O scenare pro H1:
 
 ```promql
 sum by (runtime, benchmark) (
-  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write"}[$__rate_interval])
+  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write", phase="measurement"}[$__rate_interval])
 )
 ```
 
@@ -271,7 +278,7 @@ Pokud je dostupny label `status`, lze zobrazit pouze uspesne 2xx pozadavky:
 
 ```promql
 sum by (runtime, benchmark) (
-  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", status=~"2.."}[$__rate_interval])
+  rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement", status=~"2.."}[$__rate_interval])
 )
 ```
 
@@ -281,7 +288,7 @@ P99 latence podle runtime a benchmarku:
 
 ```promql
 max by (runtime, benchmark) (
-  k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark"}
+  k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}
 )
 ```
 
@@ -289,7 +296,7 @@ Prumerna hodnota P99 za vybrane casove okno:
 
 ```promql
 avg by (runtime, benchmark) (
-  avg_over_time(k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  avg_over_time(k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -297,7 +304,7 @@ Nejhorsi P99 za vybrane casove okno:
 
 ```promql
 max by (runtime, benchmark) (
-  max_over_time(k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  max_over_time(k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -305,7 +312,7 @@ P99 pro databazove scenare pro H2:
 
 ```promql
 max by (runtime, benchmark) (
-  k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"read|write"}
+  k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"read|write", phase="measurement"}
 )
 ```
 
@@ -313,7 +320,7 @@ P99 pro HTTP stack bez databaze pro H1/H3:
 
 ```promql
 max by (runtime) (
-  k6_http_req_duration_p99{runtime=~"$runtime", benchmark="ping"}
+  k6_http_req_duration_p99{runtime=~"$runtime", benchmark="ping", phase="measurement"}
 )
 ```
 
@@ -321,7 +328,7 @@ P99 pro CPU scenar:
 
 ```promql
 max by (runtime) (
-  k6_http_req_duration_p99{runtime=~"$runtime", benchmark="compute"}
+  k6_http_req_duration_p99{runtime=~"$runtime", benchmark="compute", phase="measurement"}
 )
 ```
 
@@ -333,7 +340,7 @@ a databazova komunikace.
 
 ```promql
 max by (runtime, benchmark) (
-  k6_http_req_waiting_p99{runtime=~"$runtime", benchmark=~"read|write"}
+  k6_http_req_waiting_p99{runtime=~"$runtime", benchmark=~"read|write", phase="measurement"}
 )
 ```
 
@@ -349,7 +356,7 @@ PromQL:
 
 ```promql
 avg by (runtime, benchmark) (
-  avg_over_time(k6_http_req_duration_avg{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  avg_over_time(k6_http_req_duration_avg{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -357,7 +364,7 @@ P95:
 
 ```promql
 max by (runtime, benchmark) (
-  k6_http_req_duration_p95{runtime=~"$runtime", benchmark=~"$benchmark"}
+  k6_http_req_duration_p95{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}
 )
 ```
 
@@ -365,7 +372,7 @@ Maximalni latence:
 
 ```promql
 max by (runtime, benchmark) (
-  max_over_time(k6_http_req_duration_max{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  max_over_time(k6_http_req_duration_max{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -375,7 +382,7 @@ HTTP failure rate v procentech:
 
 ```promql
 100 * avg by (runtime, benchmark) (
-  k6_http_req_failed_rate{runtime=~"$runtime", benchmark=~"$benchmark"}
+  k6_http_req_failed_rate{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}
 )
 ```
 
@@ -383,7 +390,7 @@ Check pass rate v procentech:
 
 ```promql
 100 * avg by (runtime, benchmark) (
-  k6_checks_rate{runtime=~"$runtime", benchmark=~"$benchmark"}
+  k6_checks_rate{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}
 )
 ```
 
@@ -397,7 +404,7 @@ Celkovy pocet HTTP pozadavku ve vybranem okne:
 
 ```promql
 sum by (runtime, benchmark) (
-  increase(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  increase(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -405,7 +412,7 @@ Celkovy pocet k6 iteraci:
 
 ```promql
 sum by (runtime, benchmark) (
-  increase(k6_iterations_total{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range])
+  increase(k6_iterations_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range])
 )
 ```
 
@@ -413,7 +420,7 @@ Aktivni virtual users:
 
 ```promql
 max by (runtime, benchmark) (
-  k6_vus{runtime=~"$runtime", benchmark=~"$benchmark"}
+  k6_vus{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}
 )
 ```
 
@@ -580,24 +587,24 @@ rate(pg_stat_database_blks_hit{datname=~"$db"}[$__rate_interval])
 
 | Panel | Typ | Query |
 | --- | --- | --- |
-| RPS by runtime | Time series | `sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[$__rate_interval]))` |
-| P99 latency by runtime | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark"})` |
-| Error rate | Time series | `100 * avg by (runtime, benchmark) (k6_http_req_failed_rate{runtime=~"$runtime", benchmark=~"$benchmark"})` |
-| Total requests | Stat | `sum by (runtime, benchmark) (increase(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark"}[$__range]))` |
+| RPS by runtime | Time series | `sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__rate_interval]))` |
+| P99 latency by runtime | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"})` |
+| Error rate | Time series | `100 * avg by (runtime, benchmark) (k6_http_req_failed_rate{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"})` |
+| Total requests | Stat | `sum by (runtime, benchmark) (increase(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"}[$__range]))` |
 
 ### Hypothesis H1 row
 
 | Panel | Typ | Query |
 | --- | --- | --- |
-| I/O RPS comparison | Time series | `sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write"}[$__rate_interval]))` |
-| Average I/O RPS | Bar gauge | `avg_over_time((sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write"}[30s])))[$__range:$__interval])` |
+| I/O RPS comparison | Time series | `sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write", phase="measurement"}[$__rate_interval]))` |
+| Average I/O RPS | Bar gauge | `avg_over_time((sum by (runtime, benchmark) (rate(k6_http_reqs_total{runtime=~"$runtime", benchmark=~"ping|read|write", phase="measurement"}[30s])))[$__range:$__interval])` |
 
 ### Hypothesis H2 row
 
 | Panel | Typ | Query |
 | --- | --- | --- |
-| DB P99 latency | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"read|write"})` |
-| DB TTFB P99 | Time series | `max by (runtime, benchmark) (k6_http_req_waiting_p99{runtime=~"$runtime", benchmark=~"read|write"})` |
+| DB P99 latency | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"read|write", phase="measurement"})` |
+| DB TTFB P99 | Time series | `max by (runtime, benchmark) (k6_http_req_waiting_p99{runtime=~"$runtime", benchmark=~"read|write", phase="measurement"})` |
 | PostgreSQL connections | Time series | `pg_stat_database_numbackends{datname=~"$db"}` |
 | PostgreSQL inserted rows/s | Time series | `rate(pg_stat_database_tup_inserted{datname=~"$db"}[$__rate_interval])` |
 | PostgreSQL returned rows/s | Time series | `rate(pg_stat_database_tup_returned{datname=~"$db"}[$__rate_interval])` |
@@ -606,7 +613,7 @@ rate(pg_stat_database_blks_hit{datname=~"$db"}[$__rate_interval])
 
 | Panel | Typ | Query |
 | --- | --- | --- |
-| P99 across all scenarios | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark"})` |
+| P99 across all scenarios | Time series | `max by (runtime, benchmark) (k6_http_req_duration_p99{runtime=~"$runtime", benchmark=~"$benchmark", phase="measurement"})` |
 | App server CPU | Time series | `100 * (1 - avg by (job, instance) (rate(node_cpu_seconds_total{job="app-server-node-exporter", mode="idle"}[$__rate_interval])))` |
 | App server RAM | Time series | `100 * (1 - node_memory_MemAvailable_bytes{job="app-server-node-exporter"} / node_memory_MemTotal_bytes{job="app-server-node-exporter"})` |
 
@@ -614,8 +621,8 @@ rate(pg_stat_database_blks_hit{datname=~"$db"}[$__rate_interval])
 
 Nejcistsi postup:
 
-1. Pridat `--tag testid=${TEST_ID:-manual}` do vsech start skriptu.
-2. Kazdy beh spoustet s jednoznacnym `TEST_ID`.
+1. Kazdy beh spoustet s jednoznacnym `TEST_ID`.
+2. Filtrovat `phase="measurement"`.
 3. V Grafane pouzit panel typu `Table`.
 4. Pres `Inspect > Data > Download CSV` exportovat hodnoty.
 
@@ -623,7 +630,7 @@ Priklad dotazu pro tabulku RPS vzorku:
 
 ```promql
 sum by (testid, runtime, benchmark) (
-  rate(k6_http_reqs_total{benchmark=~"ping|compute|read|write"}[30s])
+  rate(k6_http_reqs_total{benchmark=~"ping|compute|read|write", phase="measurement"}[30s])
 )
 ```
 
@@ -631,7 +638,7 @@ Priklad dotazu pro tabulku P99 vzorku:
 
 ```promql
 max by (testid, runtime, benchmark) (
-  k6_http_req_duration_p99{benchmark=~"ping|compute|read|write"}
+  k6_http_req_duration_p99{benchmark=~"ping|compute|read|write", phase="measurement"}
 )
 ```
 
@@ -654,8 +661,7 @@ Priklad dotazu pro app-server RAM vzorku:
 )
 ```
 
-Pokud `testid` nepridas, exportuj data po jednotlivych behach pres vybrane
-casove okno a pridej identifikator behu az ve zpracovani dat.
+Pokud `TEST_ID` nezadas rucne, start skripty ho vygeneruji automaticky.
 
 ## Doporučene jednotky v Grafane
 
@@ -675,6 +681,7 @@ casove okno a pridej identifikator behu az ve zpracovani dat.
 - RPS pro H1 vyhodnocuj hlavne na `ping`, `read` a `write`.
 - P99 pro H2 vyhodnocuj hlavne na `read` a `write`, protoze ty obsahuji
   komunikaci s PostgreSQL.
+- Finalni k6 vysledky filtruj pres `phase="measurement"`.
 - `compute` je dulezity doplnkovy scenar, ale neni I/O ani DB test.
 - Node-exporter meri cely server. Pro prirazeni CPU/RAM konkretni runtime je
   nutne spoustet benchmarky sekvencne a porovnavat stejne casove useky.
