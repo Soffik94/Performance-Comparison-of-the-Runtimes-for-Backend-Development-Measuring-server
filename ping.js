@@ -1,14 +1,14 @@
 import http from "k6/http";
 import { check } from "k6";
-import { createBenchmarkConfig } from "./k6Config.js";
+import { buildUrl, createBenchmarkConfig } from "./k6Config.js";
 
 const config = createBenchmarkConfig("ping");
-const BASE_URL = config.BASE_URL;
+const PING_URL = buildUrl(config.BASE_URL, "/ping");
 
 export const options = config.options;
 
 export default function () {
-  const res = http.get(`${BASE_URL}/ping`);
+  const res = http.get(PING_URL);
 
   check(res, {
     "status is 200": (r) => r.status === 200,

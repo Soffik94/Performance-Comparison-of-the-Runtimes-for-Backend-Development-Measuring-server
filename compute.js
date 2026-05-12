@@ -1,16 +1,16 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { createBenchmarkConfig } from './k6Config.js';
+import { buildUrl, createBenchmarkConfig } from './k6Config.js';
 
 const config = createBenchmarkConfig('compute');
-const BASE_URL = config.BASE_URL;
+const COMPUTE_URL = buildUrl(config.BASE_URL, '/compute');
 
 const COMPUTE_ITERATIONS = __ENV.COMPUTE_ITERATIONS || __ENV.ITERATIONS || __ENV.N || 1000;
 
 export const options = config.options;
 
 export default function () {
-  const res = http.get(`${BASE_URL}/compute?iterations=${COMPUTE_ITERATIONS}`);
+  const res = http.get(`${COMPUTE_URL}?iterations=${COMPUTE_ITERATIONS}`);
 
   check(res, {
     'status is 200': (r) => r.status === 200,

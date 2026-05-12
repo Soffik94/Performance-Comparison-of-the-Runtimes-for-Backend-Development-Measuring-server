@@ -56,6 +56,13 @@ function buildTestId(benchmark, runtime, targetRps) {
   ].join('-');
 }
 
+export function buildUrl(baseUrl, path) {
+  const normalizedBase = String(baseUrl).replace(/\/+$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 export function createBenchmarkConfig(defaultBenchmark) {
   const BASE_URL = envString('BASE_URL', DEFAULT_BASE_URL);
   const RUNTIME = envString('RUNTIME', DEFAULT_RUNTIME);
