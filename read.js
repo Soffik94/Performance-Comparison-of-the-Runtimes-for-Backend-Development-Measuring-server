@@ -12,6 +12,7 @@ export default function () {
 
   check(res, {
     'status is 200': (r) => r.status === 200,
+    'small read payload': (r) => r.body.length < 4096,
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
 }

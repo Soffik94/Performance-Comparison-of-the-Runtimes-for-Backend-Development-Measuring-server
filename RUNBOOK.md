@@ -83,7 +83,7 @@ H3 routing assumptions:
 - Deno uses `Deno.serve` with a custom lightweight route table and no external HTTP framework.
 - Bun uses `Bun.serve` native routes and no external HTTP framework.
 - `/ping`, `/compute`, and DB endpoints should go through one route-dispatch mechanism within each runtime.
-- `/ping` is the primary H3 scenario. `/compute` is supplementary and includes CPU/hash behavior, so interpret it more carefully.
+- `/ping` is the primary H3 scenario. `/compute` is supplementary and includes deterministic JavaScript CPU work, so interpret it more carefully.
 
 Use one runtime and one benchmark type per measured run:
 

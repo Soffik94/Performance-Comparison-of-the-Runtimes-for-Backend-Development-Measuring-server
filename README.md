@@ -29,7 +29,7 @@ Benchmark traffic uses the private address of the application server:
 | Script | Endpoint | Purpose |
 | --- | --- | --- |
 | `ping.js` | `GET /ping` | basic HTTP request-response benchmark |
-| `compute.js` | `GET /compute?iterations=...` | CPU-bound SHA-256 hashing benchmark |
+| `compute.js` | `GET /compute?iterations=...` | CPU-bound deterministic JavaScript benchmark |
 | `read.js` | `GET /items` | PostgreSQL read benchmark |
 | `write.js` | `POST /items` | PostgreSQL write benchmark |
 
@@ -172,7 +172,7 @@ Routing methodology for H3:
 - Deno uses `Deno.serve` with a custom lightweight route table and no external HTTP framework.
 - Bun uses `Bun.serve` native routes and no external HTTP framework.
 - `/ping`, `/compute`, and DB endpoints must pass through the same route dispatch mechanism inside each runtime.
-- `/compute` is not interpreted as a pure router benchmark because it also includes SHA-256 hashing work.
+- `/compute` is not interpreted as a pure router benchmark because it also includes deterministic JavaScript CPU work.
 
 Before each H3 run:
 
