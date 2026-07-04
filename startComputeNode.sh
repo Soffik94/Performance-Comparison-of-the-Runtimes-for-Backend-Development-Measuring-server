@@ -3,7 +3,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export BASE_URL="${NODE_BASE_URL:-${BASE_URL:-http://10.0.0.4:3000}}"
+export BASE_URL="${NODE_BASE_URL:-${BASE_URL:-http://app-server:3000}}"
 export RUNTIME="node"
 export BENCHMARK="compute"
 export K6_SCRIPT="compute.js"

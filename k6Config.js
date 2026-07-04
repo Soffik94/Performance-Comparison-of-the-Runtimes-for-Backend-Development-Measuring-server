@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = 'http://10.0.0.4:3000';
+const DEFAULT_BASE_URL = 'http://app-server:3000';
 const DEFAULT_RUNTIME = 'node';
 const DEFAULT_TARGET_RPS = 1000;
 const DEFAULT_WARMUP_DURATION = '1m';

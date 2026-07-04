@@ -1,7 +1,0 @@
-# Hlavni dokumentace je v README.md.
-
-Pro nastaveni spustitelnych prav pouzij:
-
-```bash
-bash pravaSkriptum.sh
-```
